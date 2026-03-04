@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  backend:
+    build: ./backend
+    container_name: slackers-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount the local database to persist inventory state in the container
+      - ./backend/inventory.sqlite:/app/inventory.sqlite
+      # Mount the models folder to persist the XGBoost AI memory
+      - ./backend/models:/app/models
+    environment:
+      - ENV=production
+
+  frontend:
+    build: ./frontend
+    container_name: slackers-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      # Tell Next.js where the backend Docker container lives
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    # In production AWS ECS or AppRunner, these two containers will be deployed separately
