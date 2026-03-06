@@ -1,11 +1,10 @@
 import requests
-import sqlite3
 import os
 from datetime import datetime
-from src.models.domain import SalesData
+from src.services.database import get_current_inventory
 
-# For demonstration, we'll post to a mock endpoint on our own server or a generic webhook catcher
-WEBHOOK_URL = os.environ.get("ALERT_WEBHOOK_URL", "http://localhost:8000/api/v1/mock-webhook")
+# For demonstration, we'll post to a generic webhook catcher or our own receiver
+WEBHOOK_URL = os.environ.get("ALERT_WEBHOOK_URL", "http://localhost:8000/api/v1/webhook-receiver")
 
 def trigger_alerts_for_batch(raw_records: list):
     """
@@ -20,19 +19,8 @@ def trigger_alerts_for_batch(raw_records: list):
     if not valid_skus:
         return
         
-    db_path = os.path.join(os.path.dirname(__file__), "..", "..", "inventory.sqlite")
-    if not os.path.exists(db_path):
-        return
-        
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    
     for sku, loc in valid_skus:
-        c.execute("SELECT current_quantity FROM inventory WHERE sku=? AND location=?", (sku, loc))
-        row = c.fetchone()
-        if not row: continue
-        
-        current_qty = row[0]
+        current_qty = get_current_inventory(sku, loc)
         
         try:
             # Query our own recommendation endpoint to see if the AI says we need to reorder
@@ -61,5 +49,3 @@ def trigger_alerts_for_batch(raw_records: list):
                                 print(f"[Alert System] Webhook failed (expected if mock URL is down): {e}")
         except Exception as e:
             print(f"[Alert System] Error evaluating alert conditions: {e}")
-
-    conn.close()

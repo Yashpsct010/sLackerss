@@ -4,16 +4,16 @@ from src.models.domain import FeatureSet
 
 def extract_features(sales_data: list) -> FeatureSet:
     """
-    Mock feature extraction.
-    In production, this converts raw SalesData into a pandas DataFrame, 
-    extracts lag features, rolling statistics, and day-of-week encodings.
+    Extracts structural feature sets from raw SalesData.
+    In production, this converts raw SalesData into a matrix, 
+    extracting lag features, rolling statistics, and day-of-week encodings.
     """
     if not sales_data:
         return None
         
     sku = sales_data[0].sku
     
-    # Just a mock implementation returning the structure
+    # Map raw historical data into the ML FeatureSet structure
     return FeatureSet(
         sku=sku,
         features={

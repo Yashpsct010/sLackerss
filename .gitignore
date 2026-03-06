@@ -56,7 +56,7 @@ venv.bak/
 .mypy_cache/
 .dmypy.json
 dmypy.json
-
+read_pptx.py
 # IDEs
 .vscode/
 .idea/
@@ -69,3 +69,13 @@ dmypy.json
 # ML Models
 backend/models/*.joblib
 backend/models/*.json
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# AWS & Cloud Credentials
+.aws/
+.env.production
+.env.local
+*.pem

@@ -5,12 +5,31 @@ import numpy as np
 from datetime import datetime, timedelta
 from typing import Optional
 from src.models.domain import Forecast, Prediction, ForecastHorizon, AccuracyMetrics, TimePeriod
+import boto3
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "models")
+os.makedirs(MODEL_DIR, exist_ok=True)
+
+USE_S3 = os.environ.get("USE_S3", "false").lower() == "true"
+S3_BUCKET = os.environ.get("S3_BUCKET", "demand-forecasting-models")
+S3_REGION = os.environ.get("S3_REGION", "us-east-1")
+
+def _download_from_s3(s3_key, local_path):
+    if USE_S3:
+        try:
+            s3 = boto3.client('s3', region_name=S3_REGION)
+            s3.download_file(S3_BUCKET, s3_key, local_path)
+        except Exception as e:
+            print(f"Error downloading {s3_key} from S3: {e}")
 
 def get_forecast_from_xgb(sku: str, days_to_predict: int):
-    model_path = os.path.join(MODEL_DIR, f"xgboost_{sku}.joblib")
-    context_path = os.path.join(MODEL_DIR, f"context_{sku}.joblib")
+    model_filename = f"xgboost_{sku}.joblib"
+    context_filename = f"context_{sku}.joblib"
+    model_path = os.path.join(MODEL_DIR, model_filename)
+    context_path = os.path.join(MODEL_DIR, context_filename)
+    
+    _download_from_s3(f"models/{model_filename}", model_path)
+    _download_from_s3(f"models/{context_filename}", context_path)
     
     if not os.path.exists(model_path) or not os.path.exists(context_path):
         raise FileNotFoundError(f"Model or context for SKU {sku} not found.")
@@ -106,7 +125,10 @@ def generate_forecast(sku: str, horizon: ForecastHorizon, location: Optional[str
             )
             
         # Load the MAPE that the XGBoost model outputs for the UI
-        metrics_file = os.path.join(MODEL_DIR, "live_metrics.json")
+        metrics_filename = "live_metrics.json"
+        metrics_file = os.path.join(MODEL_DIR, metrics_filename)
+        _download_from_s3(f"models/{metrics_filename}", metrics_file)
+        
         try:
             import json
             with open(metrics_file, "r") as f:

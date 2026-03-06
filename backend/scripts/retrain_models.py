@@ -8,10 +8,25 @@ import json
 from sklearn.metrics import mean_absolute_percentage_error
 from datetime import datetime
 
+import boto3
+
 # Path where we save the trained models
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "models")
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "inventory.sqlite")
 os.makedirs(MODEL_DIR, exist_ok=True)
+
+USE_S3 = os.environ.get("USE_S3", "false").lower() == "true"
+S3_BUCKET = os.environ.get("S3_BUCKET", "demand-forecasting-models")
+S3_REGION = os.environ.get("S3_REGION", "us-east-1")
+
+def _upload_to_s3(local_path, s3_key):
+    if USE_S3:
+        try:
+            s3 = boto3.client('s3', region_name=S3_REGION)
+            s3.upload_file(local_path, S3_BUCKET, s3_key)
+            print(f"Uploaded {s3_key} to S3 bucket {S3_BUCKET}")
+        except Exception as e:
+            print(f"Error uploading to S3: {e}")
 
 def create_features(df):
     """
@@ -114,18 +129,24 @@ def retrain_models():
         metrics_dict[sku] = float(mape)
         
         # Save model
-        model_path = os.path.join(MODEL_DIR, f"xgboost_{sku}.joblib")
+        model_filename = f"xgboost_{sku}.joblib"
+        model_path = os.path.join(MODEL_DIR, model_filename)
         joblib.dump(reg, model_path)
+        _upload_to_s3(model_path, f"models/{model_filename}")
         
         # Save last known features for forecasting context
+        context_filename = f"context_{sku}.joblib"
         last_context = sku_df.iloc[-30:][['date', 'quantity_sold', 'promotion_active']].to_dict('records')
-        context_path = os.path.join(MODEL_DIR, f"context_{sku}.joblib")
+        context_path = os.path.join(MODEL_DIR, context_filename)
         joblib.dump(last_context, context_path)
+        _upload_to_s3(context_path, f"models/{context_filename}")
         
     # Save the metrics to a JSON file so the API can surface these live metrics
-    metrics_path = os.path.join(MODEL_DIR, "live_metrics.json")
+    metrics_filename = "live_metrics.json"
+    metrics_path = os.path.join(MODEL_DIR, metrics_filename)
     with open(metrics_path, "w") as f:
         json.dump(metrics_dict, f)
+    _upload_to_s3(metrics_path, f"models/{metrics_filename}")
         
     print(f"[{datetime.utcnow()}] All models successfully retrained and deployed to production!")
 

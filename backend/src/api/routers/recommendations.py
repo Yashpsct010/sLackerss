@@ -4,76 +4,35 @@ from src.models.domain import OrderRecommendation, ForecastHorizon
 from src.services.forecasting_engine import generate_forecast
 from src.services.inventory_optimizer import calculate_optimal_order
 from pydantic import BaseModel
-import sqlite3
-import os
+from src.services import database
 
 router = APIRouter(prefix="/api/v1/recommendations", tags=["Inventory Optimization"])
 
 class RecommendationResponse(BaseModel):
     recommendations: List[OrderRecommendation]
 
-def get_current_inventory(sku: str, location: str) -> int:
-    db_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "inventory.sqlite")
-    if not os.path.exists(db_path):
-        return 0 # Fallback
-        
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    c.execute("SELECT current_quantity FROM inventory WHERE sku=? AND location=?", (sku, location))
-    row = c.fetchone()
-    conn.close()
-    return row[0] if row else 0
-
 class RestockRequest(BaseModel):
     quantity: int
 
 @router.get("/stats")
 async def get_stats():
-    db_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "inventory.sqlite")
-    total_skus = 0
-    if os.path.exists(db_path):
-        conn = sqlite3.connect(db_path)
-        c = conn.cursor()
-        c.execute("SELECT COUNT(DISTINCT sku) FROM inventory")
-        row = c.fetchone()
-        total_skus = row[0] if row else 0
-        conn.close()
-    
+    total_skus = database.get_total_skus()
     if total_skus == 0:
-        total_skus = 6
-        
+        total_skus = 6 # fallback for demonstration safety
     return {"total_optimized_skus": total_skus}
 
 @router.get("/locations")
 async def get_locations():
-    db_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "inventory.sqlite")
-    locations = []
-    if os.path.exists(db_path):
-        conn = sqlite3.connect(db_path)
-        c = conn.cursor()
-        c.execute("SELECT DISTINCT location FROM inventory")
-        rows = c.fetchall()
-        locations = [row[0] for row in rows]
-        conn.close()
-    
+    locations = database.get_locations()
     if not locations:
-        locations = ["CA_1"]
-        
+        locations = ["CA_1"] # fallback for demonstration safety
     return {"locations": locations}
 
 @router.post("/{sku}/restock")
 async def restock_item(sku: str, request: RestockRequest):
-    db_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "inventory.sqlite")
-    if not os.path.exists(db_path):
-        raise HTTPException(status_code=500, detail="Database not found")
-        
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    
-    # Simulating a PO receipt by directly updating current_quantity
-    c.execute("UPDATE inventory SET current_quantity = current_quantity + ? WHERE sku = ?", (request.quantity, sku))
-    conn.commit()
-    conn.close()
+    success = database.restock_item_in_db(sku, request.quantity)
+    if not success:
+        raise HTTPException(status_code=500, detail="Database not found or update failed")
     
     return {"status": "success", "message": f"Restocked {request.quantity} units of {sku}"}
 
@@ -82,16 +41,7 @@ async def get_recommendations(
     location: str,
     priority: Optional[str] = Query(None, description="Filter by priority, e.g., CRITICAL, HIGH")
 ):
-    # Fetch all SKUs for this location from the database
-    db_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "inventory.sqlite")
-    skus = []
-    if os.path.exists(db_path):
-        conn = sqlite3.connect(db_path)
-        c = conn.cursor()
-        c.execute("SELECT DISTINCT sku FROM inventory WHERE location=?", (location,))
-        rows = c.fetchall()
-        skus = [row[0] for row in rows]
-        conn.close()
+    skus = database.get_skus_by_location(location)
     
     # Fallback if DB doesn't exist
     if not skus:
@@ -100,9 +50,8 @@ async def get_recommendations(
     recommendations = []
     
     for sku in skus:
-        # Note: In a real production app we'd bulk forecast to save time
         forecast = generate_forecast(sku=sku, horizon=ForecastHorizon.DAILY, location=location)
-        current_inv = get_current_inventory(sku, location)
+        current_inv = database.get_current_inventory(sku, location)
         
         rec = calculate_optimal_order(sku=sku, forecast=forecast, current_inventory=current_inv)
         if rec:

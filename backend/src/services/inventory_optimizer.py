@@ -13,15 +13,20 @@ def calculate_optimal_order(
     Calculates inventory optimization metrics: Reorder point, safety stock, and EOQ.
     """
     
-    # Calculate average daily demand from forecast
+    # Calculate average daily demand and standard deviation from forecast
     if not forecast.predictions:
         return None
         
+    import statistics
+    
     daily_demands = [p.point_forecast for p in forecast.predictions]
     avg_daily_demand = sum(daily_demands) / len(daily_demands)
     
-    # Mock demand standard deviation
-    std_dev_demand = avg_daily_demand * 0.2 
+    # Calculate actual standard deviation of the forecasted demand
+    if len(daily_demands) > 1:
+        std_dev_demand = statistics.stdev(daily_demands)
+    else:
+        std_dev_demand = 0.0
     
     # Safety Stock formula: Z * StdDev * sqrt(Lead Time)
     safety_stock = math.ceil(service_level_z_score * std_dev_demand * math.sqrt(lead_time_days))
@@ -29,9 +34,9 @@ def calculate_optimal_order(
     # Reorder Point formula: (Avg Daily Demand * Lead Time) + Safety Stock
     reorder_point = math.ceil((avg_daily_demand * lead_time_days) + safety_stock)
     
-    # Mock EOQ (Economic Order Quantity) for recommended order size
-    # In reality: sqrt((2 * Demand * OrderCost) / HoldingCost)
-    recommended_order_quantity = math.ceil(avg_daily_demand * 30) # Order 30 days worth
+    # Recommended order size using 30-day supply heuristic 
+    # (Replaces EOQ when exact holding/ordering costs are unavailable)
+    recommended_order_quantity = math.ceil(avg_daily_demand * 30)
     
     # Estimate stockout
     days_until_stockout = current_inventory / avg_daily_demand if avg_daily_demand > 0 else 999

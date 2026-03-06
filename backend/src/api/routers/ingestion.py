@@ -26,8 +26,8 @@ async def receive_sales_data(request: SalesBatchRequest, background_tasks: Backg
 
     return {"message": "Data processed", "result": result}
     
-@router.post("/mock-webhook")
-async def receive_mock_webhook(payload: dict):
+@router.post("/webhook-receiver")
+async def receive_webhook(payload: dict):
     # This acts as the receiving end of the Alert system for demonstration
     logging.warning(f"🔔 WEBHOOK RECEIVED: {payload.get('message')}")
     return {"status": "ok"}
